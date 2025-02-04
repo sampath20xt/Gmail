@@ -1,0 +1,41 @@
+from googleapiclient.errors import HttpError
+from email.mime.text import MIMEText
+import base64
+
+def create_message(sender, to, subject, message_text):
+    """Creates an email message."""
+    message = MIMEText(message_text)
+    message['to'] = to
+    message['from'] = sender
+    message['subject'] = subject
+    raw_message = base64.urlsafe_b64encode(message.as_bytes())
+    return {'raw': raw_message.decode()}
+
+def send_email(service, thread_id):
+    """Sends a confirmation email to the sender of the resume."""
+    try:
+        # Get the original message to find the sender's email address
+        message = service.users().messages().get(userId='me', id=thread_id, format='metadata', metadataHeaders=['From']).execute()
+        headers = message['payload']['headers']
+        sender_email = next(header['value'] for header in headers if header['name'] == 'From')
+
+        subject = "Resume Processing Confirmation"
+        message_text = (
+            f"Dear Candidate,\n\n"
+            f"Your resume has been successfully received and is currently being processed. "
+            f"We will get back to you shortly.\n\n"
+            f"Best regards,\nThe Hiring Team"
+        )
+
+        confirmation_message = create_message("me", sender_email, subject, message_text)
+        sent_message = service.users().messages().send(userId='me', body=confirmation_message).execute()
+
+        print(f"Confirmation email sent to {sender_email}")
+        return sent_message
+
+    except HttpError as error:
+        print(f"An error occurred while sending email: {error}")
+        return None
+    except StopIteration:
+        print("Sender email not found in message headers.")
+        return None
