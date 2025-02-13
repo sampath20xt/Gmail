@@ -1,0 +1,65 @@
+from googleapiclient.errors import HttpError
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from email.mime.image import MIMEImage
+import base64
+
+SIGNATURE_IMAGE_PATH = "/mnt/data/F5B298E1-DAC8-4F9D-BB13-25B8E41CA748.png"  # Path to your uploaded signature image
+
+def create_message_with_signature(sender, to, subject, message_text, signature_path):
+    """Creates an email message with a signature image."""
+    message = MIMEMultipart()
+    message['to'] = to
+    message['from'] = sender
+    message['subject'] = subject
+
+    # Email body (HTML format)
+    html_body = f"""
+    <html>
+        <body>
+            <p>Dear Aspirant,</p>
+            <p>Thank you for considering Imaginnovate. We have received your application and appreciate your interest in our company.</p>
+            <p>We will reach out to you whenever there is an opportunity that matches your profile.</p>
+            <p>Thanks and Regards,</p>
+            <p>The Learning & Development Team</p>
+            <br>
+            <img src="cid:signature" alt="Signature" style="width:200px;">
+        </body>
+    </html>
+    """
+
+    # Attach the email body
+    body_part = MIMEText(html_body, "html")
+    message.attach(body_part)
+
+    # Attach the signature image
+    with open(signature_path, 'rb') as img_file:
+        img = MIMEImage(img_file.read(), name="signature.png")
+        img.add_header('Content-ID', '<signature>')
+        img.add_header("Content-Disposition", "inline", filename="signature.png")
+        message.attach(img)
+
+    raw_message = base64.urlsafe_b64encode(message.as_bytes()).decode()
+    return {'raw': raw_message}
+
+def send_email(service, thread_id):
+    """Sends a confirmation email with a signature image to the sender of the resume."""
+    try:
+        message = service.users().messages().get(userId='me', id=thread_id, format='metadata', metadataHeaders=['From']).execute()
+        headers = message['payload']['headers']
+        sender_email = next(header['value'] for header in headers if header['name'] == 'From')
+
+        subject = "Resume Processing Confirmation"
+
+        confirmation_message = create_message_with_signature("me", sender_email, subject, "", SIGNATURE_IMAGE_PATH)
+        sent_message = service.users().messages().send(userId='me', body=confirmation_message).execute()
+
+        print(f"Confirmation email sent to {sender_email} with signature image.")
+        return sent_message
+
+    except HttpError as error:
+        print(f"An error occurred while sending email: {error}")
+        return None
+    except StopIteration:
+        print("Sender email not found in message headers.")
+        return None
